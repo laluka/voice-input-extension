@@ -1,0 +1,188 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from manifest
+        id: version
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TAG="v${VERSION}-${SHORT_SHA}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+          echo "Tag: $TAG"
+
+      - name: Validate manifest
+        run: |
+          python3 -c "
+          import json, sys, os
+
+          m = json.load(open('manifest.json'))
+          errors = []
+
+          for field in ['manifest_version', 'name', 'version', 'description']:
+              if field not in m:
+                  errors.append(f'Missing required field: {field}')
+
+          if m.get('manifest_version') != 3:
+              errors.append('manifest_version must be 3')
+
+          desc = m.get('description', '')
+          if len(desc) > 132:
+              errors.append(f'Description is {len(desc)} chars (max 132)')
+
+          files = []
+          bg = m.get('background', {})
+          if 'service_worker' in bg:
+              files.append(bg['service_worker'])
+          action = m.get('action', {})
+          if 'default_popup' in action:
+              files.append(action['default_popup'])
+          for v in action.get('default_icon', {}).values():
+              files.append(v)
+          for v in m.get('icons', {}).values():
+              files.append(v)
+
+          missing = [f for f in files if not os.path.exists(f)]
+          for f in missing:
+              errors.append(f'Referenced file not found: {f}')
+
+          if errors:
+              for e in errors:
+                  print(f'ERROR: {e}', file=sys.stderr)
+              sys.exit(1)
+
+          print(f'Manifest OK — {m[\"name\"]} v{m[\"version\"]}')
+          "
+
+      - name: Package extension
+        run: |
+          mkdir -p build
+          zip -r build/voice-input-extension.zip \
+            manifest.json \
+            background.js \
+            content.js \
+            content.css \
+            icons/ \
+            -x "*.DS_Store"
+          echo "Packaged: $(du -h build/voice-input-extension.zip | cut -f1)"
+
+      - name: Generate store assets
+        run: |
+          mkdir -p store-assets
+          python3 << 'PYEOF'
+          import struct, zlib, os, math
+
+          def create_png(width, height, pixels):
+              def chunk(ct, data):
+                  c = ct + data
+                  return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+              header = b'\x89PNG\r\n\x1a\n'
+              ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+              raw = b''
+              for y in range(height):
+                  raw += b'\x00'
+                  for x in range(width):
+                      raw += bytes(pixels[y][x])
+              idat = chunk(b'IDAT', zlib.compress(raw, 9))
+              iend = chunk(b'IEND', b'')
+              return header + ihdr + idat + iend
+
+          def dist(x1, y1, x2, y2):
+              return math.sqrt((x1-x2)**2 + (y1-y2)**2)
+
+          def make_store_icon():
+              W, H = 128, 128
+              green = (76, 175, 80, 255)
+              white = (255, 255, 255, 255)
+              t = (0, 0, 0, 0)
+              pixels = [[t]*W for _ in range(H)]
+              cx, cy = W/2, H/2
+              r = 48
+
+              for y in range(H):
+                  for x in range(W):
+                      if dist(x, y, cx, cy) <= r:
+                          pixels[y][x] = green
+
+              mc_w, mc_h = 10, 20
+              mc_top = cy - 18
+              for y in range(H):
+                  for x in range(W):
+                      fx, fy = x - cx, y - mc_top
+                      if abs(fx) <= mc_w and 0 <= fy <= mc_h:
+                          pixels[y][x] = white
+                      if fy < 0 and dist(fx, fy, 0, 0) <= mc_w:
+                          pixels[y][x] = white
+                      if fy > mc_h and dist(fx, fy - mc_h, 0, 0) <= mc_w:
+                          pixels[y][x] = white
+
+              arc_r, arc_cy2, stroke = 22, cy + 2, 3
+              for y in range(H):
+                  for x in range(W):
+                      if y < arc_cy2: continue
+                      d = dist(x, y, cx, arc_cy2)
+                      if abs(d - arc_r) <= stroke and y <= arc_cy2 + arc_r:
+                          if dist(x, y, cx, cy) <= r:
+                              pixels[y][x] = white
+
+              stem_top = int(arc_cy2 + arc_r - 2)
+              stem_bot = int(cy + 30)
+              for y in range(stem_top, min(H, stem_bot)):
+                  for x in range(int(cx-2), int(cx+3)):
+                      if dist(x, y, cx, cy) <= r:
+                          pixels[y][x] = white
+              base_y = stem_bot - 2
+              for y in range(base_y, min(H, base_y + 3)):
+                  for x in range(int(cx-10), int(cx+11)):
+                      if dist(x, y, cx, cy) <= r:
+                          pixels[y][x] = white
+
+              return create_png(W, H, pixels)
+
+          icon_data = make_store_icon()
+          with open("store-assets/icon-128.png", "wb") as f:
+              f.write(icon_data)
+          print("Created store-assets/icon-128.png")
+          PYEOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Voice Input ${{ steps.version.outputs.version }} (${{ steps.version.outputs.tag }})
+          body: |
+            Automated build from commit ${{ github.sha }}.
+
+            **Version:** ${{ steps.version.outputs.version }}
+
+            ## Install
+            1. Download `voice-input-extension.zip` below
+            2. Go to `chrome://extensions/`
+            3. Enable **Developer mode**
+            4. Click **Load unpacked** or drag-and-drop the zip
+
+            ## Usage
+            1. Click into any input / textarea / contenteditable field
+            2. Click the **Voice Input** extension icon to start recording
+            3. Speak — text streams in word by word
+            4. Press **Escape** or click the icon again to stop
+            5. Right-click the icon to change language
+          files: |
+            build/voice-input-extension.zip
+            store-assets/icon-128.png
+          make_latest: true

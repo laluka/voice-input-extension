@@ -1,0 +1,44 @@
+/* ===== Voice Input - Recording Indicator ===== */
+
+.vi-recording-indicator {
+  position: absolute;
+  z-index: 2147483647;
+  background: #e53e3e;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(229, 62, 62, 0.4);
+  animation: vi-pulse-badge 1.5s ease-in-out infinite;
+  letter-spacing: 0.3px;
+}
+
+.vi-recording-indicator::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  animation: vi-blink 1s step-end infinite;
+}
+
+@keyframes vi-pulse-badge {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(229, 62, 62, 0.4);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(229, 62, 62, 0.7);
+  }
+}
+
+@keyframes vi-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

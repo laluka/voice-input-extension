@@ -1,0 +1,4 @@
+build/
+store-assets/
+*.zip
+.DS_Store
