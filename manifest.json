@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Voice Input",
-  "version": "2.1.0",
-  "description": "Click any input field, then click the extension icon to dictate. Right-click to pick language. Escape to stop.",
+  "version": "2.2.0",
+  "description": "Click any input field, press Ctrl+Space or click the icon to dictate. Space or Escape to stop. Right-click for language.",
   "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
   "background": {
     "service_worker": "background.js"
@@ -19,5 +19,14 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "toggle-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Space",
+        "mac": "Command+Space"
+      },
+      "description": "Start/stop voice recording"
+    }
   }
 }

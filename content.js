@@ -10,9 +10,24 @@
   let targetElement = null;
   let indicator = null;
 
-  // ========== Escape key — stop recording, keep text ==========
+  // ========== Safety: auto-stop if extension context dies ==========
+  // When the extension is reloaded/updated, chrome.runtime becomes invalid.
+  // Poll periodically so the user isn't stuck with a zombie recording.
+  const contextCheckInterval = setInterval(() => {
+    try {
+      if (chrome.runtime && chrome.runtime.id) return; // still alive
+    } catch (e) {
+      // context invalidated
+    }
+    clearInterval(contextCheckInterval);
+    if (recognition) stopRecognition();
+  }, 2000);
+
+  // ========== Escape / Space — stop recording, keep text ==========
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && recognition) {
+    if (!recognition) return;
+
+    if (e.key === "Escape" || e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
       stopRecognition();
@@ -44,7 +59,7 @@
       el = el.shadowRoot.activeElement;
     }
 
-    if (!el) return null;
+    if (!el || el === document.body) return null;
 
     // Standard inputs
     if (el.tagName === "TEXTAREA") return el;
@@ -54,9 +69,23 @@
       if (editableTypes.has(type) && !el.readOnly && !el.disabled) return el;
     }
 
-    // Contenteditable
-    if (el.isContentEditable && el.getAttribute("contenteditable") !== "false") {
-      return el;
+    // Contenteditable — check the element itself, then walk up ancestors.
+    // Modern editors (Messenger/Lexical, Slack, Notion) often focus a child
+    // element inside the contenteditable root.
+    let candidate = el;
+    while (candidate && candidate !== document.body) {
+      if (candidate.isContentEditable && candidate.getAttribute("contenteditable") !== "false") {
+        return candidate;
+      }
+      candidate = candidate.parentElement;
+    }
+
+    // Last resort: look for [contenteditable="true"][role="textbox"] nearby
+    // (Messenger uses role="textbox" on its editor root)
+    const textbox = document.querySelector('[contenteditable="true"][role="textbox"]');
+    if (textbox) {
+      textbox.focus();
+      return textbox;
     }
 
     return null;
@@ -92,6 +121,13 @@
     let committedTranscript = "";
 
     recognition.onresult = (event) => {
+      // Guard: target may have been removed from DOM (SPA navigation, etc.)
+      if (!el || !el.isConnected) {
+        stopRecognition();
+        notifyBackground();
+        return;
+      }
+
       let interimTranscript = "";
       let sessionFinal = "";
 
@@ -179,8 +215,12 @@
     return el.innerText || "";
   }
 
+  function isStandardInput(el) {
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA";
+  }
+
   function setTargetValue(el, text) {
-    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+    if (isStandardInput(el)) {
       // Use native setter to work with React/Vue/Angular
       const proto = el.tagName === "INPUT" ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
       const nativeSet = Object.getOwnPropertyDescriptor(proto, "value")?.set;
@@ -194,21 +234,84 @@
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     } else {
-      // Contenteditable
-      el.textContent = text;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
+      // Contenteditable — use execCommand for maximum compatibility with
+      // rich-text editors (Messenger/Lexical, Slack, Notion, Gmail).
+      // execCommand integrates with the editor's internal state, undo stack,
+      // and event pipeline, unlike raw DOM mutations.
+      setContentEditableValue(el, text);
+    }
+  }
 
-      // Move cursor to end
+  function setContentEditableValue(el, text) {
+    // Focus the element and select all existing content
+    el.focus();
+
+    try {
+      // Select all content in the element
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {
+      // Ignore selection errors
+    }
+
+    // Try execCommand first — it works with most rich-text editors because
+    // it fires the full browser input pipeline (beforeinput → DOM change → input)
+    // which Lexical, Draft.js, ProseMirror, etc. all listen to.
+    const inserted = document.execCommand("insertText", false, text);
+
+    if (!inserted) {
+      // Fallback: simulate InputEvent manually.
+      // This covers edge cases where execCommand is blocked or deprecated.
       try {
-        const range = document.createRange();
         const sel = window.getSelection();
+        const range = document.createRange();
         range.selectNodeContents(el);
-        range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
+
+        // Fire beforeinput
+        el.dispatchEvent(new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: text,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        }));
+
+        // Perform the actual DOM update
+        el.textContent = text;
+
+        // Fire input
+        el.dispatchEvent(new InputEvent("input", {
+          inputType: "insertText",
+          data: text,
+          bubbles: true,
+          composed: true,
+        }));
       } catch (e) {
-        // Ignore
+        // Last resort: raw textContent + generic input event
+        el.textContent = text;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
       }
+    }
+
+    // Move cursor to end
+    moveCursorToEnd(el);
+  }
+
+  function moveCursorToEnd(el) {
+    try {
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {
+      // Ignore
     }
   }
 

@@ -67,9 +67,9 @@ chrome.contextMenus.onClicked.addListener((info) => {
   }
 });
 
-// ========== Extension icon click — toggle recording ==========
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
+// ========== Toggle recording logic (shared by icon click + hotkey) ==========
+async function toggleRecording(tab) {
+  if (!tab || !tab.id) return;
 
   const isRecording = recordingTabs.has(tab.id);
 
@@ -99,25 +99,41 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     const { lang } = await chrome.storage.local.get({ lang: "en-US" });
 
-    // Small delay to let content script initialize on first injection
-    setTimeout(async () => {
+    // Retry messaging with backoff — first injection needs time to initialize
+    const delays = [50, 150, 400];
+    let started = false;
+    for (const delay of delays) {
+      await new Promise((r) => setTimeout(r, delay));
       try {
         const response = await chrome.tabs.sendMessage(tab.id, {
           type: "voice-input-start",
           lang,
         });
-
         if (response && response.ok) {
           recordingTabs.add(tab.id);
           setBadge(tab.id, true);
-        } else {
-          setBadge(tab.id, false);
+          started = true;
+          break;
         }
       } catch (e) {
-        console.warn("[Voice Input] Could not start recording:", e);
-        setBadge(tab.id, false);
+        // Content script not ready yet — retry
       }
-    }, 100);
+    }
+    if (!started) {
+      console.warn("[Voice Input] Could not start recording after retries");
+      setBadge(tab.id, false);
+    }
+  }
+}
+
+// ========== Extension icon click — toggle recording ==========
+chrome.action.onClicked.addListener((tab) => toggleRecording(tab));
+
+// ========== Keyboard shortcut (Ctrl+Space) — toggle recording ==========
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === "toggle-recording") {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    toggleRecording(tab);
   }
 });
 
