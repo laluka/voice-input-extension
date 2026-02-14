@@ -1,41 +1,82 @@
-/* ===== Voice Input - Recording Indicator ===== */
+/* ===== Voice Input — Center-screen transcription overlay ===== */
 
-.vi-recording-indicator {
-  position: absolute;
+.vi-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2147483647;
-  background: #e53e3e;
-  color: #fff;
+  min-width: 340px;
+  max-width: 600px;
+  max-height: 50vh;
+  background: #1a1a2e;
+  color: #eee;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 10px;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  padding: 20px 24px;
   pointer-events: none;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(229, 62, 62, 0.4);
-  animation: vi-pulse-badge 1.5s ease-in-out infinite;
-  letter-spacing: 0.3px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: vi-fade-in 0.15s ease-out;
 }
 
-.vi-recording-indicator::before {
-  content: "";
+.vi-overlay-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e53e3e;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vi-overlay-header kbd {
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 11px;
+  color: #ccc;
+}
+
+.vi-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #e53e3e;
   border-radius: 50%;
-  margin-right: 5px;
-  vertical-align: middle;
+  flex-shrink: 0;
   animation: vi-blink 1s step-end infinite;
 }
 
-@keyframes vi-pulse-badge {
-  0%, 100% {
-    box-shadow: 0 2px 8px rgba(229, 62, 62, 0.4);
-  }
-  50% {
-    box-shadow: 0 2px 12px rgba(229, 62, 62, 0.7);
-  }
+.vi-overlay-text {
+  font-size: 18px;
+  line-height: 1.5;
+  color: #fff;
+  min-height: 28px;
+  overflow-y: auto;
+  max-height: calc(50vh - 80px);
+  word-wrap: break-word;
+}
+
+.vi-overlay-text:empty::before {
+  content: attr(data-placeholder);
+  color: #666;
+  font-style: italic;
+}
+
+.vi-interim {
+  color: #888;
+  font-style: italic;
+}
+
+@keyframes vi-fade-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 @keyframes vi-blink {
