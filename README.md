@@ -1,6 +1,23 @@
-# Voice Input
+<p align="center">
+  <img src="icon.png" alt="Voice Input" width="128" height="128">
+</p>
 
-A Chrome extension that adds speech-to-text to any input field on any website. Click a field, press `Ctrl+Space`, and start talking — when you stop, your words are inserted.
+<h1 align="center">Voice Input</h1>
+
+<p align="center">
+  <strong>Speech-to-text for any input field, on any website.</strong><br>
+  Click a field, press <code>Ctrl+Space</code>, talk, done.
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> &bull;
+  <a href="#how-it-works">How it works</a> &bull;
+  <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
+  <a href="#languages">Languages</a> &bull;
+  <a href="#contributing">Contributing</a>
+</p>
+
+---
 
 No account, no external server, no data collection. Everything runs through Chrome's built-in [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API).
 
@@ -105,16 +122,16 @@ voice-input-extension/
       - toggleRecording(): shared by hotkey + icon click
       - injects content.js + content.css into the active tab
       - sends "start" message with selected language
-      - retries with backoff (50ms → 150ms → 400ms) on first injection
+      - retries with backoff (50ms -> 150ms -> 400ms) on first injection
       - manages REC badge state
           |
           v
     content.js (injected into page)
-      1. FIND — locates focused editable element (walks shadow DOM + ancestors)
-      2. RECORD — starts SpeechRecognition, shows centered overlay
-      3. DISPLAY — streams finalized + interim text into the overlay
-      4. STOP — on Space/Escape, inserts all text into the field (single shot)
-      5. INSERT — synthetic paste → execCommand → InputEvent → DOM append
+      1. FIND   -- locates focused editable element (walks shadow DOM + ancestors)
+      2. RECORD -- starts SpeechRecognition, shows centered overlay
+      3. DISPLAY -- streams finalized + interim text into the overlay
+      4. STOP   -- on Space/Escape, inserts all text into the field (single shot)
+      5. INSERT -- synthetic paste -> execCommand -> InputEvent -> DOM append
 ```
 
 No data leaves the browser. Audio is processed by Chrome's built-in speech engine. The extension only stores the selected language preference in `chrome.storage.local`.
@@ -161,7 +178,7 @@ Run `./build.sh` for a detailed checklist.
 
 ## Contributing
 
-Contributions are welcome. Fork the repo, make your changes, and open a pull request.
+Contributions are welcome! Fork the repo, make your changes, and open a pull request.
 
 Some ideas:
 
